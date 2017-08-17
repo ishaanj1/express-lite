@@ -6,7 +6,7 @@ const Handlebars = require('handlebars');
 const fs = require('fs');
 
 module.exports = function () {
-  var responseCallbacks = [];
+  var definedRoutes = [];
 
   var server = http.createServer(function(req, res) {
     console.log(`SOMEBODY MADE A ${req.method} REQUEST TO ${req.url}`);
@@ -24,74 +24,116 @@ module.exports = function () {
       var template = Handlebars.compile(hbs);
       res.end(template(obj));
     };
-    req.query = {};
-    function IsJsonString(str) {
+
+    // Defining helper function for parsing request queries later on
+    function isJsonString(str) {
       try { JSON.parse(str); }
       catch (e) { return false; }
       return true;
     }
-    var route = req.url;
+    // Parsing request path from req.url and setting it to be requestPath
+    // Parsing request queries from req.url and setting it to be req.query
+    var requestPath;
+    req.query = {};
     if (req.url.includes('?')) {
       var queriesArray = req.url.slice(req.url.indexOf('?')+1).split('&');
       queriesArray.forEach(query => {
         var field = query.slice(0, query.indexOf('='));
         var value = query.slice(query.indexOf('=')+1);
-        req.query[field] = IsJsonString(value) ? JSON.parse(value) : value;
+        req.query[field] = isJsonString(value) ? JSON.parse(value) : value;
       });
-      route = req.url.slice(0, req.url.indexOf('?'));
+      requestPath = req.url.slice(0, req.url.indexOf('?'));
+    } else {
+      requestPath = req.url;
+    }
+    requestPath = requestPath.replace(/^\/+|\/+$/g, '');
+
+    // Defining a helper function for parsing path parameters later on
+    const findPathParams = (requestPath, definedPath, isMiddleware) => {
+      let requestPathNames = (requestPath === '') ? [] : requestPath.split('/');
+      let definedPathNames = (definedPath === '') ? [] : definedPath.split('/');
+      let pathParams = {};
+      if (requestPathNames.length < definedPathNames.length) {
+        return false;
+      }
+      if (!isMiddleware && requestPathNames.length > definedPathNames.length) {
+        return false;
+      }
+      for (let i = 0; i < definedPathNames.length; i++) {
+        if (definedPathNames[i].startsWith(':')) {
+          let pathParamKey = definedPathNames[i].slice(1);
+          pathParams[pathParamKey] = requestPathNames[i];
+        } else if (requestPathNames[i] !== definedPathNames[i]) {
+          return false;
+        }
+      }
+      return pathParams;
     }
 
+    // Parsing request body from req and defining req.body
     var body = '';
     req.on('readable', function() {
-        var chunk = req.read();
-        if (chunk) body += chunk;
+      var chunk = req.read();
+      if (chunk) body += chunk;
     });
     req.on('end', function() {
-        // queryString is the querystring node built-in
-        req.body = querystring.parse(body);
-        let doBreak = true;
-        console.log('boo')
-        const next = () => (doBreak = false);
-        for (let callbackObj of responseCallbacks) {
-          if (callbackObj.method === req.method && callbackObj.route === route) {
-            callbackObj.callback(req, res, next);
-            if (doBreak) { break; }
-          } else if (callbackObj.method === 'USE' &&
-                    (route === callbackObj.route || route.startsWith(callbackObj.route+'/'))
-                    ) {
-            callbackObj.callback(req, res, next);
-            if (doBreak) { break; }
+      // queryString is the querystring node built-in
+      req.body = querystring.parse(body);
+      console.log('boo');
+
+      for (let definedRoute of definedRoutes) {
+        let callbackDidMatch = false;
+        if (definedRoute.method === req.method) {
+          let possiblePathParams = findPathParams(requestPath, definedRoute.path, false);
+          if (possiblePathParams) {
+            callbackDidMatch = true;
+            req.params = possiblePathParams;
           }
-          doBreak = true;
+        } else if (definedRoute.method === 'USE') {
+          let possiblePathParams = findPathParams(requestPath, definedRoute.path, true);
+          if (possiblePathParams) {
+            callbackDidMatch = true;
+            req.params = possiblePathParams;
+          }
+          //callbackDidMatch = (requestPath === definedRoute.path || requestPath.startsWith(definedRoute.path+'/'));
         }
-        //Harcoded browser output if no routes match the URL that the user visits
-        res.writeHead(200, {'Content-Type': 'text/plain'});
-        res.end("Some people don't think the universe be like it is. But it do.");
+
+        if (callbackDidMatch) {
+          let doBreak = true;
+          const next = () => (doBreak = false);
+          definedRoute.callback(req, res, next);
+          if (doBreak) { break; }
+        }
+      }
+
+      // Harcoded browser output if no paths match the URL that the user visits
+      res.writeHead(200, {'Content-Type': 'text/plain'});
+      res.end("Some people don't think the universe be like it is. But it do.");
     });
   });
 
-  function addToResponseCallbacks(route, callback, method) {
-    console.log(`YOU CREATED ${method} ${route}`);
-    responseCallbacks.push({
-      route: route,
+  function addToDefinedRoutes(path, callback, method) {
+    console.log(`THE DEVELOPER CREATED ${method} ${path}`);
+    definedRoutes.push({
+      path: path.replace(/^\/+|\/+$/g, ''),
       callback: callback,
       method: method
     });
   }
 
   return {
-    get: function(route, callback) {
-      addToResponseCallbacks(route, callback, 'GET');
+    get: function(path, callback) {
+      addToDefinedRoutes(path, callback, 'GET');
     },
-    post: function(route, callback) {
-      addToResponseCallbacks(route, callback, 'POST');
+    post: function(path, callback) {
+      addToDefinedRoutes(path, callback, 'POST');
     },
-    use: function(route, callback) {
-      if (typeof route === 'function') {
-        callback = route;
-        route = '';
+    use: function(path, callback) {
+      if (typeof path === 'function') {
+        callback = path;
+        path = '';
       }
-      addToResponseCallbacks(route, callback, 'USE');
+      addToDefinedRoutes(path, callback, 'USE');
     },
     listen: function(port) {
       console.log('YOU ARE LISTENING TO PORT', port);
