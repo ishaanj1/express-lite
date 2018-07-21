@@ -1,24 +1,20 @@
 {
-  "name": "hexpress",
+  "name": "express-lite",
   "version": "1.0.0",
-  "description": "Meet *Hexpess*, your very own, *very minimal* version of Express.",
-  "main": "hexpress.js",
+  "description": "",
+  "main": "express-lite.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/horizons-school-of-technology/hexpress.git"
+    "url": "https://github.com/ishaanj1/express-lite.git"
   },
   "author": "",
   "license": "ISC",
-  "bugs": {
-    "url": "https://github.com/horizons-school-of-technology/hexpress/issues"
-  },
-  "homepage": "https://github.com/horizons-school-of-technology/hexpress#readme",
   "dependencies": {
-    "express": "^4.15.3",
-    "handlebars": "^4.0.10",
+    "express": "^4.16.3",
+    "handlebars": "^4.0.11",
     "querystring": "^0.2.0"
   }
 }
